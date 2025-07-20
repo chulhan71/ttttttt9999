@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>테트리스</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      background: #111;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+    #container {
+      display: flex;
+      gap: 20px;
+    }
+    canvas {
+      background: #000;
+      border: 2px solid #555;
+    }
+    #info {
+      font-size: 16px;
+      margin-top: 10px;
+    }
+    #scoreBox {
+      font-size: 18px;
+      margin: 10px 0;
+    }
+    button {
+      padding: 8px 16px;
+      margin-top: 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div>
+      <h2>🎮 테트리스</h2>
+      <canvas id="tetris" width="240" height="400"></canvas>
+    </div>
+    <div>
+      <h3>다음 블럭</h3>
+      <canvas id="next" width="80" height="80"></canvas>
+      <div id="scoreBox">점수: <span id="score">0</span></div>
+      <button id="pauseBtn">⏸ 일시정지</button>
+      <div id="info">
+        <p>← → 이동<br>↑ 회전<br>↓ 빠르게 내리기</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('tetris');
+    const context = canvas.getContext('2d');
+    context.scale(20, 20);
+
+    const nextCanvas = document.getElementById('next');
+    const nextContext = nextCanvas.getContext('2d');
+    nextContext.scale(20, 20);
+
+    const scoreElement = document.getElementById('score');
+    const pauseBtn = document.getElementById('pauseBtn');
+
+    let paused = false;
+    let score = 0;
+
+    const colors = [null, 'red', 'blue', 'violet', 'green', 'orange', 'cyan', 'yellow'];
+
+    const shapes = {
+      T: [[0,0,0],[1,1,1],[0,1,0]],
+      O: [[2,2],[2,2]],
+      L: [[0,3,0],[0,3,0],[0,3,3]],
+      J: [[0,4,0],[0,4,0],[4,4,0]],
+      I: [[0,5,0,0],[0,5,0,0],[0,5,0,0],[0,5,0,0]],
+      S: [[0,6,6],[6,6,0],[0,0,0]],
+      Z: [[7,7,0],[0,7,7],[0,0,0]],
+    };
+
+    function createPiece(type) {
+      return shapes[type];
+    }
+
+    function createMatrix(w, h) {
+      const matrix = [];
+      while (h--) matrix.push(new Array(w).fill(0));
+      return matrix;
+    }
+
+    function drawMatrix(matrix, offset, ctx) {
+      matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value !== 0) {
+            ctx.fillStyle = colors[value];
+            ctx.fillRect(x + offset.x, y + offset.y, 1, 1);
+          }
+        });
+      });
+    }
+
+    function merge(arena, player) {
+      player.matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value !== 0) {
+            arena[y + player.pos.y][x + player.pos.x] = value;
+          }
+        });
+      });
+    }
+
+    function collide(arena, player) {
+      const [m, o] = [player.matrix, player.pos];
+      for (let y = 0; y < m.length; ++y) {
+        for (let x = 0; x < m[y].length; ++x) {
+          if (m[y][x] !== 0 &&
+              (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function rotate(matrix) {
+      for (let y = 0; y < matrix.length; ++y) {
+        for (let x = 0; x < y; ++x) {
+          [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+        }
+      }
+      matrix.forEach(row => row.reverse());
+    }
+
+    function playerRotate() {
+      const pos = player.pos.x;
+      let offset = 1;
+      rotate(player.matrix);
+      while (collide(arena, player)) {
+        player.pos.x += offset;
+        offset = -(offset + (offset > 0 ? 1 : -1));
+        if (offset > player.matrix[0].length) {
+          rotate(player.matrix);
+          player.pos.x = pos;
+          return;
+        }
+      }
+    }
+
+    function playerDrop() {
+      player.pos.y++;
+      if (collide(arena, player)) {
+        player.pos.y--;
+        merge(arena, player);
+        arenaSweep();
+        playerReset();
+        updateScore();
+      }
+      dropCounter = 0;
+    }
+
+    function arenaSweep() {
+      let rowCount = 1;
+      outer: for (let y = arena.length - 1; y >= 0; --y) {
+        for (let x = 0; x < arena[y].length; ++x) {
+          if (arena[y][x] === 0) continue outer;
+        }
+        arena.splice(y, 1);
+        arena.unshift(new Array(arena[0].length).fill(0));
+        ++y;
+        score += rowCount * 10;
+        rowCount *= 2;
+      }
+    }
+
+    function updateScore() {
+      scoreElement.innerText = score;
+    }
+
+    function playerMove(dir) {
+      player.pos.x += dir;
+      if (collide(arena, player)) {
+        player.pos.x -= dir;
+      }
+    }
+
+    function draw() {
+      context.fillStyle = '#000';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      drawMatrix(arena, {x: 0, y: 0}, context);
+      drawMatrix(player.matrix, player.pos, context);
+
+      nextContext.fillStyle = '#000';
+      nextContext.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+      drawMatrix(next.matrix, {x: 1, y: 1}, nextContext);
+    }
+
+    function update(time = 0) {
+      if (paused) return;
+      const deltaTime = time - lastTime;
+      lastTime = time;
+      dropCounter += deltaTime;
+      if (dropCounter > dropInterval) {
+        playerDrop();
+      }
+      draw();
+      requestAnimationFrame(update);
+    }
+
+    function randomPieceType() {
+      const types = 'TJLOSZI';
+      return types[Math.floor(Math.random() * types.length)];
+    }
+
+    function playerReset() {
+      player.matrix = next.matrix;
+      player.pos.y = 0;
+      player.pos.x = (arena[0].length / 2 | 0) - (player.matrix[0].length / 2 | 0);
+      next.matrix = createPiece(randomPieceType());
+      if (collide(arena, player)) {
+        arena.forEach(row => row.fill(0));
+        score = 0;
+        updateScore();
+      }
+    }
+
+    const arena = createMatrix(12, 20);
+    const player = { pos: {x: 0, y: 0}, matrix: null };
+    const next = { matrix: createPiece(randomPieceType()) };
+
+    let dropCounter = 0;
+    let dropInterval = 1000;
+    let lastTime = 0;
+
+    document.addEventListener('keydown', event => {
+      if (paused) return;
+      if (event.key === 'ArrowLeft') playerMove(-1);
+      else if (event.key === 'ArrowRight') playerMove(1);
+      else if (event.key === 'ArrowDown') playerDrop();
+      else if (event.key === 'ArrowUp') playerRotate();
+    });
+
+    pauseBtn.addEventListener('click', () => {
+      paused = !paused;
+      pauseBtn.innerText = paused ? '▶ 다시 시작' : '⏸ 일시정지';
+      if (!paused) update();
+    });
+
+    playerReset();
+    updateScore();
+    update();
+  </script>
+</body>
+</html>
